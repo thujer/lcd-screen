@@ -1,0 +1,25 @@
+
+#ifndef __SCREEN_DEF__
+    #define __SCREEN_DEF__
+
+    
+    #define SCREEN_COUNT            5
+    #define SCREEN_LINE_COUNT       LCD_DDRAM_LINE_COUNT
+    #define SCREEN_LINE_WIDTH       LCD_DDRAM_LINE_WIDTH
+    #define SCREEN_SIZE             (SCREEN_LINE_COUNT * SCREEN_LINE_WIDTH)
+    #define SCREEN_BUF_SIZE         SCREEN_COUNT * (SCREEN_LINE_COUNT * SCREEN_LINE_WIDTH)
+
+    typedef enum {  SCREEN_ID_SCREEN0 = 0,
+                    SCREEN_ID_SCREEN1,
+                    SCREEN_ID_SCREEN2,
+                    SCREEN_ID_SCREEN3,
+                    SCREEN_ID_SCREEN4,
+    };
+
+    typedef enum {  SCREEN_LINE0 = 0,
+                    SCREEN_LINE1
+    };
+
+#endif
+
+

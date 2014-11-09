@@ -1,0 +1,417 @@
+
+    /////////////////////////////////////////////////////////////////////////////
+    // +---------------------------------------------------------------------+ //
+    // |                           LCD display driver                        | //
+    // |                       -----------------------------                 | //
+    // |                       Verze 1.01a Tiny Build 090424                 | //
+    // |                                                                     | //
+    // |                         Copyright Tomas Hujer                       | //
+    // |                                (c) 2009                             | //
+    // |                 thomas[point]hoodger[at]gmail[point]com             | //
+    // |                                                                     | //
+    // +---------------------------------------------------------------------+ //
+    // | Driver standard LCD panel 16x2 chars                                | //
+    // | for LCD controllers: HD44780, KS0066, SED1278                       | //
+    // +---------------------------------------------------------------------+ //
+    // | Version history:                                                    | //
+    // |                                                                     | //
+    // |       1.01   - Basic driver version                                 | //
+    // |       ------------------------------------------------------------- | //
+    // |                                                                     | //
+    // +---------------------------------------------------------------------+ //
+    /////////////////////////////////////////////////////////////////////////////
+
+#pragma LIST
+#pragma PAGELENGTH(30000);
+#pragma LINES
+
+#include "target.def"
+#include TARGET_SFR_HEADER
+#include <stdio.h>          // Standard I/O routines
+#include "event.h"
+#include "event.def"
+#include "lcd.h"
+#include "lcd.def"
+#include "lcd_font.def"
+#include "led.h"
+#include "led.def"
+#include "timers.h"
+#include "timers.def"
+
+
+uchar   TARGET_MMEM     lcd_proc_state;
+
+//--------------------------------------------------------------------------------------------------
+
+// +-------------------------------+
+// | Set value to LCD pins by mask |
+// +-------------------------------+
+void lcd_set_data_port(uint pin_mask, uint pin_value)
+{
+    #if LCD_BUS_WIDTH == LCD_8BIT
+    if(pin_mask & DB0)  lcd_pin_db0 = ((pin_value & DB0)?1:0);
+    if(pin_mask & DB1)  lcd_pin_db1 = ((pin_value & DB1)?1:0);
+    if(pin_mask & DB2)  lcd_pin_db2 = ((pin_value & DB2)?1:0);
+    if(pin_mask & DB3)  lcd_pin_db3 = ((pin_value & DB3)?1:0);
+    #endif
+    if(pin_mask & DB4)  lcd_pin_db4 = ((pin_value & DB4)?1:0);
+    if(pin_mask & DB5)  lcd_pin_db5 = ((pin_value & DB5)?1:0);
+    if(pin_mask & DB6)  lcd_pin_db6 = ((pin_value & DB6)?1:0);
+    if(pin_mask & DB7)  lcd_pin_db7 = ((pin_value & DB7)?1:0);
+
+    if(pin_mask & RS)  lcd_pin_rs     = ((pin_value & RS)?1:0);
+    if(pin_mask & RW)  lcd_pin_rw     = ((pin_value & RW)?1:0);
+    if(pin_mask & EN)  lcd_pin_enable = ((pin_value & EN)?1:0);
+}
+
+
+// +-------------------------------+
+// | Set data modem on RS pin      |
+// +-------------------------------+
+void lcd_set_data(uchar data_byte)
+{
+    lcd_set_data_port(DATABITS, data_byte);
+}
+
+// +-------------------------------+
+// | Set command mode on RS pin    |
+// +-------------------------------+
+void lcd_set_command_mode()
+{
+    lcd_pin_rs = 0;
+}
+
+// +-------------------------------+
+// | Set data mode on RS pin       |
+// +-------------------------------+
+void lcd_set_data_mode()
+{
+    lcd_pin_rs = 1;
+}
+
+// +-------------------------------+
+// | Set write mode on RW pin      |
+// +-------------------------------+
+void lcd_set_write_mode()
+{
+    lcd_pin_rw = 0;
+}
+
+// +-------------------------------+
+// | Set read mode on RW pin       |
+// +-------------------------------+
+void lcd_set_read_mode()
+{
+    lcd_pin_rw = 1;
+}
+
+// +-------------------------------+
+// | Send pulse to EN pin          |
+// +-------------------------------+
+void lcd_confirm()
+{
+    uchar i = 1;
+
+    lcd_pin_enable = 0;
+    while(i--);
+    lcd_pin_enable = 1;
+}
+
+// +-------------------------------+
+// | Return LCD busy flag          |
+// +-------------------------------+
+bit lcd_get_busy_flag()
+{
+    return(lcd_pin_status);
+}
+
+
+// +-------------------------------+
+// | Wait for busy flag            |
+// +-------------------------------+
+bit lcd_wait_for_busy()
+{
+    lcd_set_data(DATABITS);
+    lcd_set_read_mode();
+    lcd_set_command_mode();
+    lcd_confirm();
+    TIMER_LCD = LCD_TIMEOUT_BUSY;
+    while(TIMER_LCD)
+    {
+        if(~lcd_get_busy_flag())
+            if(~lcd_get_busy_flag())                         // check busy flag twice
+                break;
+    }
+    lcd_set_command_mode();
+    return(TIMER_LCD?1:0);
+}
+
+
+// +-------------------------------+
+// | Exchange high and low nibbles |
+// +-------------------------------+
+#if LCD_BUS_WIDTH == LCD_4BIT
+void nibble_swap(uchar *num)
+{
+    uchar temp;
+
+    temp = (*num);
+    temp = (temp >> 4);
+    temp |= (uchar) ((*num) << 4);
+    (*num) = temp;
+}
+#endif
+
+
+
+// +----------------------------------+
+// | Send command to LCD              |
+// +----------------------------------+
+bit lcd_send_command(uchar command)
+{
+    #if LCD_BUS_WIDTH == LCD_8BIT
+    lcd_set_data(command);
+    lcd_set_command_mode();
+    lcd_set_write_mode();
+    lcd_confirm();
+    return(lcd_wait_for_busy());
+    #endif
+
+    #if LCD_BUS_WIDTH == LCD_4BIT
+    lcd_set_data(command);
+    lcd_set_command_mode();
+    lcd_set_write_mode();
+    lcd_confirm();
+
+    if(command == LCD_CMD_SELECT_4BIT_BUS)
+    {
+        lcd_confirm();
+        lcd_confirm();
+        return(1);
+    }
+
+    if(command != LCD_CMD_FUNCTION_SET)
+    {
+        //lcd_wait_for_busy();
+        nibble_swap(&command);                                              // echange L-H bits
+        lcd_set_data(command);
+        lcd_confirm();
+        return(lcd_wait_for_busy());
+    }
+    return(1);
+    #endif
+}
+
+
+// +----------------------------------+
+// | Send data byte to LCD            |
+// +----------------------------------+
+bit lcd_send_data(uchar data_byte)
+{
+    #if LCD_BUS_WIDTH == LCD_8BIT
+    lcd_set_data(data_byte);
+    lcd_set_data_mode();
+    lcd_set_write_mode();
+    lcd_confirm();
+    return(lcd_wait_for_busy());
+    #endif
+
+    #if LCD_BUS_WIDTH == LCD_4BIT
+    lcd_set_data(data_byte);
+    lcd_set_data_mode();
+    lcd_confirm();
+    nibble_swap(&data_byte);                                              // echange L-H bits
+    lcd_set_data(data_byte);
+    lcd_confirm();
+    return(lcd_wait_for_busy());
+    #endif
+}
+
+
+// +----------------------------------+
+// | Move text on display to right    |
+// +----------------------------------+
+void lcd_shift_text_to_right()
+{
+    lcd_send_command(LCD_CMD_CURSOR_MOVING | 8 | 4);
+}
+
+// +----------------------------------+
+// | Move text on display to left     |
+// +----------------------------------+
+void lcd_shift_text_to_left()
+{
+    lcd_send_command(LCD_CMD_CURSOR_MOVING | 8);
+}
+
+// +----------------------------------+
+// | Move cursor to right             |
+// +----------------------------------+
+void lcd_move_cursor_to_right()
+{
+    lcd_send_command(LCD_CMD_CURSOR_MOVING | 4);
+}
+
+// +----------------------------------+
+// | Move cursor to left              |
+// +----------------------------------+
+void lcd_move_cursor_to_left()
+{
+    lcd_send_command(LCD_CMD_CURSOR_MOVING);
+}
+
+
+// +----------------------------------+
+// | Moving text/cursor on display    |
+// +----------------------------------+
+void lcd_moving(uchar ch1, uchar ch2)
+{
+    //lcd_send_command(LCD_CMD_DISPLAY_CONTROL | LCD_DISPLAY_CONTROL_DISPLAY_ON | LCD_DISPLAY_CONTROL_CURSOR_ON);
+
+    if(ch1 == 'S')
+    {
+        if(ch2 == 'R')
+            lcd_shift_text_to_right();
+        else
+            lcd_shift_text_to_left();
+    }
+    else
+    {
+        if(ch2 == 'R')
+            lcd_move_cursor_to_right();
+        else
+            lcd_move_cursor_to_left();
+    }
+    //lcd_send_command(LCD_CMD_CURSOR_MOVING | ((ch1=='S')?8:0) | ((ch2=='R'?4:0)));
+}
+
+
+
+
+// +----------------------------------+
+// | Write whole screen from buffer   |
+// +----------------------------------+
+void lcd_put_screen(uchar *buf, uchar buf_size)
+{
+    uchar i;
+
+    lcd_send_command(LCD_CMD_SET_DDRAM_ADDRESS);
+    
+    for(i=0; i<buf_size; i++)
+    {
+        if(buf[i])                                                 // convert zero to spaces
+            lcd_send_data(buf[i]);
+        else
+            lcd_send_data(0x20);
+    }
+}
+
+
+// +----------------------------------+
+// | Write custom font to LCD CGRAM   |
+// +----------------------------------+
+void lcd_load_custom_font(uchar *font_ptr)
+{
+    uchar i;
+
+    lcd_send_command(LCD_CMD_SET_CGRAM_ADDRESS);
+    
+    // Write
+    for(i=0; font_ptr[i]!=LCD_DATA_END; i++)
+    {
+        lcd_send_data(font_ptr[i]);
+    }
+
+}
+
+
+// +----------------------------------+
+// | Set cursor position              |
+// +----------------------------------+
+/*
+void lcd_gotoxy(uchar x, uchar y)
+{
+    x %= LCD_DDRAM_LINE_WIDTH;
+    y %= LCD_DDRAM_LINE_COUNT;
+
+    lcd_send_command(LCD_CMD_SET_DDRAM_ADDRESS + y*LCD_DDRAM_LINE_WIDTH + x);
+}
+*/
+
+
+// +------------------------------+
+// | Put char to current position |
+// +------------------------------+
+/*
+char lcd_puchar(char ch)
+{
+    lcd_send_data(ch);
+    return(ch);
+}
+*/
+
+
+// +-------------------------------+
+// | Display init                  |
+// +-------------------------------+
+void lcd_init()
+{
+    TIMER_LCD_DELAY = TIME_20MS;
+    lcd_proc_state = LCD_PROC_INIT;
+}
+
+
+
+// +-------------------------------+
+// | Display process               |
+// +-------------------------------+
+bit lcd_proc()
+{
+    switch(lcd_proc_state)
+    {
+        case LCD_PROC_INIT:
+                if(!TIMER_LCD_DELAY)
+                {
+                    lcd_set_data(0);
+                    lcd_pin_enable = 1;
+                    lcd_send_command(LCD_CMD_FUNCTION_SET);
+    
+                    TIMER_LCD_DELAY = TIME_5MS;
+                    lcd_proc_state++;
+                }
+                break;
+
+        case LCD_PROC_INIT+1:
+                if(!TIMER_LCD_DELAY)
+                {
+                    lcd_send_command(LCD_CMD_FUNCTION_SET);
+                    TIMER_LCD_DELAY = TIME_10MS;
+                    lcd_proc_state++;
+                }
+                break;
+
+        case LCD_PROC_INIT+2:
+                if(!TIMER_LCD_DELAY)
+                {
+                    lcd_send_command(LCD_CMD_FUNCTION_SET);
+                    //lcd_confirm();
+
+                    #if LCD_BUS_WIDTH == LCD_4BIT
+                    lcd_send_command(LCD_CMD_SELECT_4BIT_BUS);
+                    #endif
+
+                    lcd_send_command(LCD_CMD_DISPLAY_CONTROL | LCD_DISPLAY_CONTROL_DISPLAY_ON);   // display on
+                    lcd_send_command(LCD_CMD_CLEAR_DISPLAY);                                      // clear display
+
+                    lcd_load_custom_font(&lcd_user_font); 
+
+                    lcd_send_command(LCD_CMD_SET_DDRAM_ADDRESS+0);          // set ddram to the begining of the first line
+
+                    event_send(EVENT_ID_LCD_READY, 0);
+                    lcd_proc_state = LCD_PROC_STOP;
+                }
+                break;
+
+    }
+    return(lcd_proc_state?1:0);
+}

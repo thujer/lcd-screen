@@ -1,0 +1,174 @@
+
+    /////////////////////////////////////////////////////////////////////////////
+    // +---------------------------------------------------------------------+ //
+    // |                          Display Screen Driver                      | //
+    // |                       -----------------------------                 | //
+    // |                       Verze 1.01a Tiny Build 090424                 | //
+    // |                                                                     | //
+    // |                         Copyright Tomas Hujer                       | //
+    // |                                (c) 2009                             | //
+    // |                 thomas[point]hoodger[at]gmail[point]com             | //
+    // |                                                                     | //
+    // +---------------------------------------------------------------------+ //
+    // | Universal text panel screen driver                                  | //
+    // +---------------------------------------------------------------------+ //
+    // | Version history:                                                    | //
+    // |                                                                     | //
+    // |       1.01   - Basic driver version                                 | //
+    // |       ------------------------------------------------------------- | //
+    // |                                                                     | //
+    // +---------------------------------------------------------------------+ //
+    /////////////////////////////////////////////////////////////////////////////
+
+#pragma LIST
+#pragma PAGELENGTH(30000);
+#pragma LINES
+
+#include "target.def"
+#include TARGET_SFR_HEADER
+#include <stdio.h>          // Standard I/O routines
+#include <stdarg.h>
+
+#include "event.h"
+#include "event.def"
+#include "lcd.h"
+#include "lcd.def"
+#include "screen.def"
+
+#define uchar unsigned char
+#define uint  unsigned int 
+
+uchar     TARGET_XMEM   screen_buf[SCREEN_COUNT * (SCREEN_LINE_COUNT * SCREEN_LINE_WIDTH)];
+uchar     TARGET_MMEM   screen_current_screen_id;
+bit                     screen_overflow_flag;
+
+
+// +---------------------------+
+// | Driver initialize         |
+// +---------------------------+
+void screen_init()
+{
+    uint i;
+
+    lcd_init();
+
+    for(i=0; i<SCREEN_BUF_SIZE; i++)
+        screen_buf[i] = 0x00;
+
+    screen_current_screen_id = SCREEN_ID_SCREEN0;
+    screen_overflow_flag = 0;
+}
+
+
+// +------------------------------------+
+// | Print text to selected screen      |
+// +------------------------------------+
+int screen_printf(uchar screen_id, uchar x, uchar y, const char *format, ...)
+{
+    int      ret_val;
+    va_list  ap;
+    uint     offset;
+    
+    if(screen_id < SCREEN_COUNT)
+    {
+        offset = (screen_id * SCREEN_SIZE) + (y * SCREEN_LINE_WIDTH) + x;
+    
+        va_start(ap, format);
+        ret_val = sprintf(screen_buf + offset, format, ap);
+        va_end(ap);
+    
+        event_send(EVENT_ID_SCREEN_CHANGE, screen_id);
+
+        if(ret_val >= SCREEN_SIZE)
+            screen_overflow_flag = 1;
+    
+        return ret_val;
+    }
+    return 0;
+}
+
+
+
+// +------------------------------------+
+// | Event handler                      |
+// +------------------------------------+
+void screen_event_proc(event_id, event_value)
+{
+    switch(event_id)
+    {
+        case EVENT_ID_SCREEN_CHANGE:
+                if(event_value == screen_current_screen_id)      // If current screen is equal to changed screen
+                {
+                    lcd_put_screen(screen_buf + event_value * SCREEN_SIZE, SCREEN_SIZE);  // refresh it
+                }
+                break;
+
+        case EVENT_ID_LCD_READY:
+                event_send(EVENT_ID_SCREEN_READY, 0);
+                break;
+
+        case EVENT_ID_SCREEN_REFRESH:
+                lcd_put_screen(screen_buf + screen_current_screen_id * SCREEN_SIZE, SCREEN_SIZE);  // refresh it
+                break;
+    }
+}
+
+
+// +------------------------------------+
+// | Change current screen              |
+// +------------------------------------+
+void screen_select(uchar screen_id)
+{
+    screen_current_screen_id = screen_id;
+    event_send(EVENT_ID_SCREEN_REFRESH, screen_id);
+}
+
+
+// +------------------------------------+
+// | Return current screen ID           |
+// +------------------------------------+
+uchar screen_get_current_screen_id()
+{
+    return(screen_current_screen_id);
+}
+
+
+// +------------------------------------+
+// | Returns whole screen buffer size   |
+// +------------------------------------+
+uint screen_get_screen_buf_size()
+{
+    return(SCREEN_BUF_SIZE);
+}
+
+
+// +------------------------------------+
+// | Returns screens count              |
+// +------------------------------------+
+uchar screen_get_screens_count()
+{
+    return(SCREEN_COUNT);
+}
+
+
+// +------------------------------------+
+// | Returns one screen size            |
+// +------------------------------------+
+uchar screen_get_screen_size()
+{
+    return(SCREEN_SIZE);
+}
+
+
+// +------------------------------------+
+// | Driver process                     |
+// +------------------------------------+
+bit screen_proc()
+{
+    if(event_ready)                                   // zpracovani udalosti
+        screen_event_proc(event_id, event_value);
+
+    return(lcd_proc());
+}
+
+

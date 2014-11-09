@@ -1,0 +1,98 @@
+
+#ifndef __LCD_DEF__
+    #define __LCD_DEF__
+    
+    #define uchar unsigned char 
+
+    // -------------------------------------------------------------------
+    typedef enum {  LCD_COMMAND = 0,
+                    LCD_DATA
+    };
+
+    // -------------------------------------------------------------------
+    // Select bus width
+    #define LCD_4BIT       0
+    #define LCD_8BIT       1
+    #define LCD_BUS_WIDTH  LCD_8BIT
+    
+    // -------------------------------------------------------------------
+    // Define LCD pins ID
+    #if LCD_BUS_WIDTH == LCD_8BIT
+    #define DB0         0x0001
+    #define DB1         0x0002
+    #define DB2         0x0004
+    #define DB3         0x0008
+    #define DATABITS    (DB0|DB1|DB2|DB3|DB4|DB5|DB6|DB7)
+    #else
+    #define DATABITS    (DB4|DB5|DB6|DB7)
+    #endif
+    #define DB4         0x0010
+    #define DB5         0x0020
+    #define DB6         0x0040
+    #define DB7         0x0080
+    #define RS          0x0100
+    #define RW          0x0200
+    #define EN          0x0400
+
+    // -------------------------------------------------------------------
+    #if LCD_BUS_WIDTH == LCD_4BIT
+    sbit lcd_pin_rs     = P3^5;         // Instrukce / data displeje
+    sbit lcd_pin_rw     = P3^6;         // Read / write displeje
+    sbit lcd_pin_enable = P3^7;         // Enable displeje
+    sbit lcd_pin_db4    = P2^4;         // Instrukce / data displeje
+    sbit lcd_pin_db5    = P2^5;         // Instrukce / data displeje
+    sbit lcd_pin_db6    = P2^6;         // Instrukce / data displeje
+    sbit lcd_pin_db7    = P2^7;         // Instrukce / data displeje
+    sbit lcd_pin_status = P2^7;         // Status displeje
+    #endif
+
+    #if LCD_BUS_WIDTH == LCD_8BIT
+    sbit lcd_pin_rs     = P3^5;         // Instrukce / data displeje
+    sbit lcd_pin_rw     = P3^6;         // Read / write displeje
+    sbit lcd_pin_enable = P3^7;         // Enable displeje
+    sbit lcd_pin_db0    = P2^0;         // Instrukce / data displeje
+    sbit lcd_pin_db1    = P2^1;         // Instrukce / data displeje
+    sbit lcd_pin_db2    = P2^2;         // Instrukce / data displeje
+    sbit lcd_pin_db3    = P2^3;         // Instrukce / data displeje
+    sbit lcd_pin_db4    = P2^4;         // Instrukce / data displeje
+    sbit lcd_pin_db5    = P2^5;         // Instrukce / data displeje
+    sbit lcd_pin_db6    = P2^6;         // Instrukce / data displeje
+    sbit lcd_pin_db7    = P2^7;         // Instrukce / data displeje
+    sbit lcd_pin_status = P2^7;         // Status displeje
+    #endif
+    // -------------------------------------------------------------------
+    //                P1
+    // +-------------------------------+
+    // | ST                          - |
+    // | D7  D6  D5  D4  RS  RW  EN  - |
+    // +-------------------------------+
+    //   1   1   1   1   0   1   0   0       0xF4
+
+    #define LCD_CMD_FUNCTION_SET             0x38
+    #define LCD_CMD_SELECT_4BIT_BUS          0x20
+    #define LCD_CMD_CLEAR_DISPLAY            0x01
+    #define LCD_CMD_CURSOR_HOME_4BIT         0x20
+    #define LCD_CMD_DISPLAY_CONTROL          0x08
+    #define LCD_CMD_CURSOR_MOVING            0x10
+    #define LCD_CMD_SET_CGRAM_ADDRESS        0x40
+    #define LCD_CMD_SET_DDRAM_ADDRESS        0x80
+
+    //#if LCD_BUS_WIDTH == LCD_8BIT
+    #define LCD_DISPLAY_CONTROL_DISPLAY_ON   0x04
+    #define LCD_DISPLAY_CONTROL_CURSOR_ON    0x02
+    //#else
+    //#define LCD_DISPLAY_CONTROL_DISPLAY_ON   0x04
+    //#define LCD_DISPLAY_CONTROL_CURSOR_ON    0x02
+    //#endif
+
+    typedef enum {  LCD_PROC_STOP = 0,
+                    LCD_PROC_INIT = 10,
+    };
+
+    #define LCD_TIMEOUT_BUSY        TIME_100MS
+    #define LCD_DDRAM_LINE_WIDTH    40
+    #define LCD_DDRAM_LINE_COUNT     2
+    #define LCD_DATA_END            0x99
+
+#endif
+
