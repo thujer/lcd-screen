@@ -1,6 +1,6 @@
 lcd-screen
 ==========
 
-Copyright (c) 2009 Tomas Hujer
+Copyright (c) 1999 Tomas Hujer
 
 C51 - LCD display &amp; screen drivers
